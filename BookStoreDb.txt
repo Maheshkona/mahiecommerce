@@ -1,0 +1,193 @@
+CREATE DATABASE BookStoreDb;
+GO
+USE BookStoreDb;
+GO
+
+
+
+=-----------------------------------------------------------------------------
+
+Create the tables with keys and relationships. The following SQL defines each table with appropriate data types and constraints.
+
+/* Categories: each book belongs to one category */
+CREATE TABLE Categories (
+    CategoryID     INT IDENTITY(1,1) PRIMARY KEY,
+    Name           NVARCHAR(100) NOT NULL,
+    Description    NVARCHAR(255) NULL
+);
+
+/* Books: linked to Categories */
+CREATE TABLE Books (
+    BookID         INT IDENTITY(1,1) PRIMARY KEY,
+    CategoryID     INT NOT NULL,
+    Title          NVARCHAR(255) NOT NULL,
+    Author         NVARCHAR(255) NOT NULL,
+    ISBN           NVARCHAR(20) NOT NULL,
+    Description    NVARCHAR(MAX),
+    Price          DECIMAL(10,2) NOT NULL,
+    ImageUrl       NVARCHAR(255),
+    Publisher      NVARCHAR(255),
+    PublishedDate  DATE,
+    Stock          INT NOT NULL DEFAULT 0,
+    FOREIGN KEY (CategoryID) REFERENCES Categories(CategoryID)
+);
+
+/* Customers: holds user profiles */
+CREATE TABLE Customers (
+    CustomerID     INT IDENTITY(1,1) PRIMARY KEY,
+    FirstName      NVARCHAR(50) NOT NULL,
+    LastName       NVARCHAR(50) NOT NULL,
+    Email          NVARCHAR(255) NOT NULL UNIQUE,
+    Phone          NVARCHAR(20),
+    PasswordHash   NVARCHAR(255) NOT NULL,
+    CreatedAt      DATETIME NOT NULL DEFAULT GETDATE()
+);
+
+/* Addresses: one‑to‑many with Customers:contentReference[oaicite:0]{index=0} */
+CREATE TABLE Addresses (
+    AddressID      INT IDENTITY(1,1) PRIMARY KEY,
+    CustomerID     INT NOT NULL,
+    AddressLine1   NVARCHAR(255) NOT NULL,
+    AddressLine2   NVARCHAR(255),
+    City           NVARCHAR(100) NOT NULL,
+    State          NVARCHAR(100),
+    PostalCode     NVARCHAR(20),
+    Country        NVARCHAR(100) NOT NULL,
+    FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID)
+);
+
+/* Carts: each customer can have a cart:contentReference[oaicite:1]{index=1} */
+CREATE TABLE Carts (
+    CartID         INT IDENTITY(1,1) PRIMARY KEY,
+    CustomerID     INT NOT NULL,
+    CreatedDate    DATETIME NOT NULL DEFAULT GETDATE(),
+    IsActive       BIT NOT NULL DEFAULT 1,
+    FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID)
+);
+
+/* CartItems: books and quantities in a cart:contentReference[oaicite:2]{index=2} */
+CREATE TABLE CartItems (
+    CartItemID     INT IDENTITY(1,1) PRIMARY KEY,
+    CartID         INT NOT NULL,
+    BookID         INT NOT NULL,
+    Quantity       INT NOT NULL,
+    UnitPrice      DECIMAL(10,2) NOT NULL,
+    AddedDate      DATETIME NOT NULL DEFAULT GETDATE(),
+    FOREIGN KEY (CartID) REFERENCES Carts(CartID),
+    FOREIGN KEY (BookID) REFERENCES Books(BookID)
+);
+
+/* Wishlists: each customer can maintain a wishlist:contentReference[oaicite:3]{index=3} */
+CREATE TABLE Wishlists (
+    WishlistID     INT IDENTITY(1,1) PRIMARY KEY,
+    CustomerID     INT NOT NULL,
+    CreatedDate    DATETIME NOT NULL DEFAULT GETDATE(),
+    FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID)
+);
+
+/* WishlistItems: books in the wishlist:contentReference[oaicite:4]{index=4} */
+CREATE TABLE WishlistItems (
+    WishlistItemID INT IDENTITY(1,1) PRIMARY KEY,
+    WishlistID     INT NOT NULL,
+    BookID         INT NOT NULL,
+    AddedDate      DATETIME NOT NULL DEFAULT GETDATE(),
+    FOREIGN KEY (WishlistID) REFERENCES Wishlists(WishlistID),
+    FOREIGN KEY (BookID) REFERENCES Books(BookID)
+);
+
+/* Orders: captures each purchase:contentReference[oaicite:5]{index=5} */
+CREATE TABLE Orders (
+    OrderID        INT IDENTITY(1,1) PRIMARY KEY,
+    CustomerID     INT NOT NULL,
+    OrderDate      DATETIME NOT NULL DEFAULT GETDATE(),
+    Status         NVARCHAR(50) NOT NULL,
+    TotalAmount    DECIMAL(10,2) NOT NULL,
+    ShippingAddressID INT NULL,
+    FOREIGN KEY (CustomerID) REFERENCES Customers(CustomerID),
+    FOREIGN KEY (ShippingAddressID) REFERENCES Addresses(AddressID)
+);
+
+/* OrderItems: books and quantities within an order:contentReference[oaicite:6]{index=6} */
+CREATE TABLE OrderItems (
+    OrderItemID    INT IDENTITY(1,1) PRIMARY KEY,
+    OrderID        INT NOT NULL,
+    BookID         INT NOT NULL,
+    Quantity       INT NOT NULL,
+    UnitPrice      DECIMAL(10,2) NOT NULL,
+    Subtotal AS (Quantity * UnitPrice),
+    FOREIGN KEY (OrderID) REFERENCES Orders(OrderID),
+    FOREIGN KEY (BookID) REFERENCES Books(BookID)
+);
+
+/* Payments: payment details per order:contentReference[oaicite:7]{index=7} */
+CREATE TABLE Payments (
+    PaymentID      INT IDENTITY(1,1) PRIMARY KEY,
+    OrderID        INT NOT NULL,
+    PaymentDate    DATETIME NOT NULL DEFAULT GETDATE(),
+    Amount         DECIMAL(10,2) NOT NULL,
+    PaymentMethod  NVARCHAR(50) NOT NULL,
+    PaymentStatus  NVARCHAR(50) NOT NULL,
+    PaymentProvider NVARCHAR(100),
+    TransactionReference NVARCHAR(100),
+    FOREIGN KEY (OrderID) REFERENCES Orders(OrderID)
+);
+
+/* AdminUsers: separate table for admin logins */
+CREATE TABLE AdminUsers (
+    AdminUserID    INT IDENTITY(1,1) PRIMARY KEY,
+    Username       NVARCHAR(50) NOT NULL UNIQUE,
+    Email          NVARCHAR(100) NOT NULL UNIQUE,
+    PasswordHash   NVARCHAR(255) NOT NULL,
+    Role           NVARCHAR(50) NOT NULL DEFAULT 'Admin',
+    CreatedAt      DATETIME NOT NULL DEFAULT GETDATE()
+);
+
+/* Optional indexes for faster lookups */
+CREATE INDEX IDX_Books_CategoryID ON Books(CategoryID);
+CREATE INDEX IDX_Addresses_CustomerID ON Addresses(CustomerID);
+CREATE INDEX IDX_Carts_CustomerID ON Carts(CustomerID);
+CREATE INDEX IDX_Wishlists_CustomerID ON Wishlists(CustomerID);
+CREATE INDEX IDX_Orders_CustomerID ON Orders(CustomerID);
+------------------------------------------------------------------------------------------------------------------------------------------------
+
+Seed test data (optional). You can insert a few sample rows to verify the relationships:
+
+
+-- Categories
+INSERT INTO Categories (Name, Description) VALUES
+  ('Fiction', 'Fictional books'),
+  ('Non‑Fiction', 'Informative books'),
+  ('Children', 'Books for children');
+
+-- Books
+INSERT INTO Books (CategoryID, Title, Author, ISBN, Description, Price, ImageUrl, Publisher, PublishedDate, Stock)
+VALUES
+  (1, 'The Great Gatsby', 'F. Scott Fitzgerald', '9780743273565', 'Classic novel of the 1920s', 12.99, '/images/gatsby.jpg', 'Charles Scribner''s Sons', '1925‑04‑10', 100),
+  (2, 'Sapiens: A Brief History of Humankind', 'Yuval Noah Harari', '9780099590088', 'History of humans', 18.50, '/images/sapiens.jpg', 'Harvill Secker', '2014‑09‑04', 50);
+
+-- Create an admin user
+INSERT INTO AdminUsers (Username, Email, PasswordHash)
+VALUES ('admin', 'admin@example.com', 'hashedPasswordValueHere');
+
+
+
+
+Why this structure?
+
+Addresses separated from Customers: the article notes that user information and addresses should be in separate tables with a one‑to‑many link via user_id
+dev.to
+.
+
+Wishlist and Cart tables: each is independent and links to the user; wishlist items only need product_id and user_id
+dev.to
+, while cart items link to carts, products and carry quantity
+dev.to
+.
+
+Orders and OrderItems: using an order table and separate order items table mirrors the design where order information is separate from the items, and a payment_details table holds payment data like order, amount, provider and status
+dev.to
+.
+
+Once these tables exist, use Entity Framework Core’s scaffolding (dotnet ef dbcontext scaffold) to generate models and a DbContext. Your controllers and Razor views can then work against this context to query and update data in a structured, relational way.
+
+

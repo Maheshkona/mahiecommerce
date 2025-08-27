@@ -1,0 +1,68 @@
+why we should used Areas folder??
+
+We created an Areas folder in the project because the admin section of the e‑commerce site is logically separate from the public shopping experience. ASP.NET’s Areas feature lets you group related controllers, views and models under a separate namespace and folder structure. The Microsoft documentation notes that areas “organize related functionality into a group … as a separate namespace (for routing) and folder structure (for views)”
+learn.microsoft.com
+ and that they are useful when an app consists of multiple high‑level components that can be logically separated
+learn.microsoft.com
+. Another article compares areas to modules: each area contains its own controllers, views and other files, which makes the code more modular and maintainable
+c-sharpcorner.com
+.
+
+In our zipped MVC project, the Areas/Admin folder holds all the admin controllers and Razor views. This keeps the admin routes (/Admin/Dashboard, /Admin/Orders etc.) separate from similar routes in the public site (e.g. /Orders for customer orders) and allows us to use a distinct layout for admin pages. Without areas, two different OrdersController classes—one for admins and one for customers—would clash in the same namespace. By using an area, you avoid naming conflicts, keep the project organised by feature, and make it easier for different developers to work on separate parts of the application.
+----------------------------------------------------------------------
+
+
+
+
+How to create and run the project (database‑first)
+
+Prepare the database
+Create a SQL Server database (for example, BookStoreDb). Define tables that mirror the models in the project: Books, Categories, Customers, Addresses, Orders, OrderItems, Wishlists, WishlistItems, Carts, CartItems, Payments, and AdminUsers. Set up primary keys and relationships (e.g., OrderItems references Orders and Books). Seed test data if you wish.
+
+Update the connection string
+In appsettings.json you’ll find a DefaultConnection pointing to localdb. Replace it with a connection string for your SQL Server instance, e.g.:
+
+"ConnectionStrings": {
+    "DefaultConnection": "Server=.;Database=BookStoreDb;Trusted_Connection=True;TrustServerCertificate=True"
+}
+
+
+Scaffold models from the database
+With the database schema ready, open a terminal in the project root and run:
+
+dotnet tool install --global dotnet-ef  # if not installed
+dotnet ef dbcontext scaffold \
+    "Server=.;Database=BookStoreDb;Trusted_Connection=True;TrustServerCertificate=True" \
+    Microsoft.EntityFrameworkCore.SqlServer \
+    --context AppDbContext \
+    --output-dir Models \
+    --force
+
+
+This command generates entity classes and updates AppDbContext to match the database. Replace --force only if you want to overwrite existing model files. After scaffolding, reapply any customizations (e.g., navigation properties) as needed.
+
+Adjust controllers and pages
+Controllers in Controllers and Areas/Admin/Controllers are stubbed out (Index, Manage, etc.). Extend them with database logic: query your AppDbContext for lists of books, add shopping‑cart operations, and perform CRUD for the admin area. The views in Views and Areas/Admin/Views mirror your original HTML files; they use Tag Helpers (asp-controller, asp-action) for clean URL generation. Feel free to refine layouts—there’s a _Layout.cshtml for the public site and _AdminLayout.cshtml for admin pages.
+
+Run the site
+From the project directory:
+
+dotnet restore
+dotnet run
+
+
+Browse to https://localhost:5001/ (or the port shown). The MVC routing works as follows:
+
+Public pages: / → HomeController.Index, /Shop → ShopController.Index, etc.
+
+Authentication pages: /Account/Register, /Account/Login.
+
+Admin pages: /Admin/Dashboard, /Admin/Products/Manage, and so on.
+
+Next steps
+
+Move inline JavaScript in views into separate .js files under wwwroot/js for maintainability.
+
+Implement proper authentication/authorization using ASP.NET Core Identity instead of client‑side localStorage/sessionStorage.
+
+Wire up forms (e.g., registration, checkout) to post to controller actions and save data in the database.
