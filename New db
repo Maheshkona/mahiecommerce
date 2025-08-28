@@ -1,0 +1,217 @@
+/* ================================================================
+   BookStoreDb — FULL SCHEMA for BookStore.zip
+   Matches Register/Login pages (PasswordHash as NVARCHAR)
+   ================================================================ */
+
+-- 0) Create / use DB
+IF DB_ID('BookStoreDb') IS NULL
+    CREATE DATABASE BookStoreDb;
+GO
+USE BookStoreDb;
+GO
+
+/* ------------------------------------------------
+   (Optional) Clean drop in FK-safe order
+   ------------------------------------------------ */
+IF OBJECT_ID('dbo.OrderItems','U')     IS NOT NULL DROP TABLE dbo.OrderItems;
+IF OBJECT_ID('dbo.Payments','U')       IS NOT NULL DROP TABLE dbo.Payments;
+IF OBJECT_ID('dbo.Orders','U')         IS NOT NULL DROP TABLE dbo.Orders;
+IF OBJECT_ID('dbo.WishlistItems','U')  IS NOT NULL DROP TABLE dbo.WishlistItems;
+IF OBJECT_ID('dbo.Wishlists','U')      IS NOT NULL DROP TABLE dbo.Wishlists;
+IF OBJECT_ID('dbo.CartItems','U')      IS NOT NULL DROP TABLE dbo.CartItems;
+IF OBJECT_ID('dbo.Carts','U')          IS NOT NULL DROP TABLE dbo.Carts;
+IF OBJECT_ID('dbo.Addresses','U')      IS NOT NULL DROP TABLE dbo.Addresses;
+IF OBJECT_ID('dbo.Books','U')          IS NOT NULL DROP TABLE dbo.Books;
+IF OBJECT_ID('dbo.Categories','U')     IS NOT NULL DROP TABLE dbo.Categories;
+IF OBJECT_ID('dbo.Customers','U')      IS NOT NULL DROP TABLE dbo.Customers;
+IF OBJECT_ID('dbo.AdminUsers','U')     IS NOT NULL DROP TABLE dbo.AdminUsers;
+GO
+
+/* ------------------------------------------------
+   1) Reference tables
+   ------------------------------------------------ */
+CREATE TABLE dbo.Categories (
+    CategoryID   INT IDENTITY(1,1) PRIMARY KEY,
+    [Name]       NVARCHAR(100) NOT NULL,
+    [Description] NVARCHAR(255) NULL
+);
+
+CREATE TABLE dbo.Books (
+    BookID        INT IDENTITY(1,1) PRIMARY KEY,
+    CategoryID    INT NOT NULL,
+    Title         NVARCHAR(255) NOT NULL,
+    Author        NVARCHAR(255) NOT NULL,
+    ISBN          NVARCHAR(20)  NOT NULL,
+    [Description] NVARCHAR(MAX) NULL,
+    Price         DECIMAL(10,2) NOT NULL CHECK (Price >= 0),
+    ImageUrl      NVARCHAR(255) NULL,
+    Publisher     NVARCHAR(255) NULL,
+    PublishedDate DATE NULL,
+    Stock         INT NOT NULL DEFAULT(0) CHECK (Stock >= 0),
+    CONSTRAINT FK_Books_Categories
+        FOREIGN KEY (CategoryID) REFERENCES dbo.Categories(CategoryID),
+    CONSTRAINT UQ_Books_ISBN UNIQUE (ISBN)
+);
+
+/* ------------------------------------------------
+   2) Customers & Addresses
+   (Register/Login expects PasswordHash NVARCHAR)
+   ------------------------------------------------ */
+CREATE TABLE dbo.Customers (
+    CustomerID   INT IDENTITY(1,1) PRIMARY KEY,
+    FirstName    NVARCHAR(50)  NOT NULL,
+    LastName     NVARCHAR(50)  NOT NULL,
+    Email        NVARCHAR(255) NOT NULL,
+    Phone        NVARCHAR(20)  NULL,
+    PasswordHash NVARCHAR(255) NOT NULL,   -- matches project pages
+    CreatedAt    DATETIME NOT NULL DEFAULT(GETDATE()),
+    CONSTRAINT UQ_Customers_Email UNIQUE (Email)
+);
+
+CREATE TABLE dbo.Addresses (
+    AddressID     INT IDENTITY(1,1) PRIMARY KEY,
+    CustomerID    INT NOT NULL,
+    AddressLine1  NVARCHAR(255) NOT NULL,
+    AddressLine2  NVARCHAR(255) NULL,
+    City          NVARCHAR(100) NOT NULL,
+    [State]       NVARCHAR(100) NULL,
+    PostalCode    NVARCHAR(20)  NULL,
+    Country       NVARCHAR(100) NOT NULL,
+    CONSTRAINT FK_Addresses_Customers
+        FOREIGN KEY (CustomerID) REFERENCES dbo.Customers(CustomerID)
+);
+
+/* ------------------------------------------------
+   3) Carts & CartItems
+   ------------------------------------------------ */
+CREATE TABLE dbo.Carts (
+    CartID      INT IDENTITY(1,1) PRIMARY KEY,
+    CustomerID  INT NOT NULL,
+    CreatedDate DATETIME NOT NULL DEFAULT(GETDATE()),
+    IsActive    BIT NOT NULL DEFAULT(1),
+    CONSTRAINT FK_Carts_Customers
+        FOREIGN KEY (CustomerID) REFERENCES dbo.Customers(CustomerID)
+);
+
+CREATE TABLE dbo.CartItems (
+    CartItemID  INT IDENTITY(1,1) PRIMARY KEY,
+    CartID      INT NOT NULL,
+    BookID      INT NOT NULL,
+    Quantity    INT NOT NULL CHECK (Quantity > 0),
+    UnitPrice   DECIMAL(10,2) NOT NULL CHECK (UnitPrice >= 0),
+    AddedDate   DATETIME NOT NULL DEFAULT(GETDATE()),
+    CONSTRAINT FK_CartItems_Carts
+        FOREIGN KEY (CartID) REFERENCES dbo.Carts(CartID),
+    CONSTRAINT FK_CartItems_Books
+        FOREIGN KEY (BookID) REFERENCES dbo.Books(BookID)
+);
+
+/* ------------------------------------------------
+   4) Wishlists & WishlistItems
+   ------------------------------------------------ */
+CREATE TABLE dbo.Wishlists (
+    WishlistID  INT IDENTITY(1,1) PRIMARY KEY,
+    CustomerID  INT NOT NULL,
+    CreatedDate DATETIME NOT NULL DEFAULT(GETDATE()),
+    CONSTRAINT FK_Wishlists_Customers
+        FOREIGN KEY (CustomerID) REFERENCES dbo.Customers(CustomerID)
+);
+
+CREATE TABLE dbo.WishlistItems (
+    WishlistItemID INT IDENTITY(1,1) PRIMARY KEY,
+    WishlistID     INT NOT NULL,
+    BookID         INT NOT NULL,
+    AddedDate      DATETIME NOT NULL DEFAULT(GETDATE()),
+    CONSTRAINT FK_WishlistItems_Wishlists
+        FOREIGN KEY (WishlistID) REFERENCES dbo.Wishlists(WishlistID),
+    CONSTRAINT FK_WishlistItems_Books
+        FOREIGN KEY (BookID) REFERENCES dbo.Books(BookID),
+    CONSTRAINT UQ_WishlistItems UNIQUE (WishlistID, BookID) -- avoid duplicates
+);
+
+/* ------------------------------------------------
+   5) Orders, OrderItems, Payments
+   ------------------------------------------------ */
+CREATE TABLE dbo.Orders (
+    OrderID           INT IDENTITY(1,1) PRIMARY KEY,
+    CustomerID        INT NOT NULL,
+    OrderDate         DATETIME NOT NULL DEFAULT(GETDATE()),
+    [Status]          NVARCHAR(50) NOT NULL,
+    TotalAmount       DECIMAL(10,2) NOT NULL CHECK (TotalAmount >= 0),
+    ShippingAddressID INT NULL,
+    CONSTRAINT FK_Orders_Customers
+        FOREIGN KEY (CustomerID) REFERENCES dbo.Customers(CustomerID),
+    CONSTRAINT FK_Orders_ShippingAddress
+        FOREIGN KEY (ShippingAddressID) REFERENCES dbo.Addresses(AddressID)
+);
+
+CREATE TABLE dbo.OrderItems (
+    OrderItemID INT IDENTITY(1,1) PRIMARY KEY,
+    OrderID     INT NOT NULL,
+    BookID      INT NOT NULL,
+    Quantity    INT NOT NULL CHECK (Quantity > 0),
+    UnitPrice   DECIMAL(10,2) NOT NULL CHECK (UnitPrice >= 0),
+    Subtotal    AS (Quantity * UnitPrice) PERSISTED,
+    CONSTRAINT FK_OrderItems_Orders
+        FOREIGN KEY (OrderID) REFERENCES dbo.Orders(OrderID),
+    CONSTRAINT FK_OrderItems_Books
+        FOREIGN KEY (BookID) REFERENCES dbo.Books(BookID)
+);
+
+CREATE TABLE dbo.Payments (
+    PaymentID            INT IDENTITY(1,1) PRIMARY KEY,
+    OrderID              INT NOT NULL,
+    PaymentDate          DATETIME NOT NULL DEFAULT(GETDATE()),
+    Amount               DECIMAL(10,2) NOT NULL CHECK (Amount >= 0),
+    PaymentMethod        NVARCHAR(50) NOT NULL,   -- e.g., 'Card', 'COD'
+    PaymentStatus        NVARCHAR(50) NOT NULL,   -- e.g., 'Paid', 'Pending'
+    PaymentProvider      NVARCHAR(100) NULL,      -- e.g., 'Stripe'
+    TransactionReference NVARCHAR(100) NULL,
+    CONSTRAINT FK_Payments_Orders
+        FOREIGN KEY (OrderID) REFERENCES dbo.Orders(OrderID)
+);
+
+/* ------------------------------------------------
+   6) Admin users (used by /Admin area if wired)
+   ------------------------------------------------ */
+CREATE TABLE dbo.AdminUsers (
+    AdminUserID  INT IDENTITY(1,1) PRIMARY KEY,
+    [Username]   NVARCHAR(50)  NOT NULL,
+    Email        NVARCHAR(100) NOT NULL,
+    PasswordHash NVARCHAR(255) NOT NULL,
+    [Role]       NVARCHAR(50)  NOT NULL DEFAULT('Admin'),
+    CreatedAt    DATETIME NOT NULL DEFAULT(GETDATE()),
+    CONSTRAINT UQ_AdminUsers_Username UNIQUE ([Username]),
+    CONSTRAINT UQ_AdminUsers_Email    UNIQUE (Email)
+);
+
+/* ------------------------------------------------
+   Indexes for common lookups/joins
+   ------------------------------------------------ */
+CREATE INDEX IX_Books_CategoryID       ON dbo.Books(CategoryID);
+CREATE INDEX IX_Addresses_CustomerID   ON dbo.Addresses(CustomerID);
+CREATE INDEX IX_Carts_CustomerID       ON dbo.Carts(CustomerID);
+CREATE INDEX IX_Wishlists_CustomerID   ON dbo.Wishlists(CustomerID);
+CREATE INDEX IX_Orders_CustomerID      ON dbo.Orders(CustomerID);
+CREATE INDEX IX_Customers_Email        ON dbo.Customers(Email); -- helps Login lookup
+GO
+
+/* ------------------------------------------------
+   Minimal seed data (optional)
+   ------------------------------------------------ */
+-- Categories
+INSERT INTO dbo.Categories ([Name],[Description]) VALUES
+('Fiction','Fictional books'),
+('Non-Fiction','Informative books'),
+('Children','Books for kids');
+
+-- Books (2 samples)
+INSERT INTO dbo.Books (CategoryID, Title, Author, ISBN, [Description], Price, ImageUrl, Publisher, PublishedDate, Stock)
+VALUES
+(1,'The Great Gatsby','F. Scott Fitzgerald','9780743273565','Classic novel',12.99,'/images/gatsby.jpg','Scribner','1925-04-10',100),
+(2,'Sapiens','Yuval Noah Harari','9780099590088','History of humankind',18.50,'/images/sapiens.jpg','Harvill Secker','2014-09-04',50);
+
+-- Admin user (dev only; replace PasswordHash with a real hash when you wire Identity)
+INSERT INTO dbo.AdminUsers ([Username], Email, PasswordHash)
+VALUES ('admin','admin@example.com','admin123');
+GO
