@@ -1,0 +1,38 @@
+Tech stack
+
+ASP.NET Core 8 MVC
+
+Entity Framework Core 8 (SQL Server)
+
+Cookie Authentication (no heavy Identity scaffolding) with hashed passwords (uses Identity’s PasswordHasher)
+
+Clean Services layer: IProductService, ICartService, IOrderService, IPaymentService, IUserService
+
+Beautiful Bootstrap 5 UI (cards, filters, neat admin pages)
+
+Modules (as requested)
+
+Product Management (Admin CRUD)
+
+Shopping Cart (Add/Remove, totals)
+
+Order Processing (create from cart, track status)
+
+Payment Gateway (Mock) – completes successfully for local testing
+
+User Management (Register, Login, Logout; roles: CUSTOMER / ADMIN)
+
+Admin & User flows
+
+Admin Dashboard: /Admin/Dashboard
+Manage Products, Orders (update status), Customers.
+
+User: Browse Books, view Details, Add to Cart, Checkout, see My Orders.
+
+Demo credentials (pre-seeded):
+
+Admin → admin / Admin@123
+
+Customer → john / John@123
+
+You can also self-register. Selecting Admin role on Register will create an admin user (for demo).
