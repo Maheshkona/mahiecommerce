@@ -1,0 +1,1422 @@
+# Solution structure (virtual)
+Bookory/
+├─ Bookory.csproj
+├─ Program.cs
+├─ appsettings.json
+├─ appsettings.Development.json
+├─ Data/
+│  ├─ AppDbContext.cs
+│  └─ DbInitializer.cs
+├─ Models/
+│  ├─ ApplicationUser.cs
+│  ├─ Book.cs
+│  ├─ Category.cs
+│  ├─ CartItem.cs
+│  ├─ Order.cs
+│  ├─ OrderItem.cs
+│  ├─ WishlistItem.cs
+│  └─ Enums.cs
+├─ Services/
+│  ├─ IBookService.cs
+│  ├─ ICartService.cs
+│  ├─ IOrderService.cs
+│  ├─ IWishlistService.cs
+│  ├─ BookService.cs
+│  ├─ CartService.cs
+│  └─ OrderService.cs
+├─ Controllers/
+│  ├─ HomeController.cs
+│  ├─ AccountController.cs
+│  ├─ ShopController.cs
+│  ├─ CartController.cs
+│  ├─ OrdersController.cs
+│  └─ WishlistController.cs
+├─ Areas/
+│  └─ Admin/
+│     ├─ Admin.csproj (implicit)
+│     ├─ Controllers/
+│     │  ├─ DashboardController.cs
+│     │  ├─ BooksController.cs
+│     │  └─ CustomersController.cs
+│     └─ Views/
+│        ├─ Dashboard/Index.cshtml            (from admindashboard.html)
+│        ├─ Books/Index.cshtml                (from managebooks.html)
+│        └─ Customers/Index.cshtml            (from customers.html)
+├─ Views/
+│  ├─ Shared/_Layout.cshtml
+│  ├─ Shared/_ValidationScriptsPartial.cshtml
+│  ├─ Home/Index.cshtml                       (from homepage.html)
+│  ├─ Shop/Index.cshtml                       (from shoppage.html)
+│  ├─ Account/Login.cshtml                    (from login.html)
+│  ├─ Account/Register.cshtml                 (from registrationpage.html)
+│  ├─ Account/Profile.cshtml                  (from myprofile.html)
+│  ├─ Cart/Index.cshtml                       (from cart.html)
+│  ├─ Cart/Checkout.cshtml                    (from checkout.html)
+│  ├─ Cart/Payment.cshtml                     (from payment.html)
+│  ├─ Cart/PaymentSuccess.cshtml              (from paymentsuccess.html)
+│  ├─ Wishlist/Index.cshtml                   (from wishlist.html)
+│  ├─ Orders/Index.cshtml                     (from orders.html)
+│  └─ Orders/Details.cshtml                   (from vieworders.html)
+└─ wwwroot/
+   ├─ css/site.css
+   └─ images/ (copy zip images here: cod.webp, rupay.jpg, supercoins1.webp, upi.png, upilogo.jpg)
+
+# IMPORTANT
+- The provided static HTML was converted into Razor Views.
+- We **ignored** Addaddress.html as requested.
+- Identity with roles **Admin** and **Customer** is configured; an admin user is seeded.
+- EF Core uses **SQL Server** via DefaultConnection. Swap to SQLite if preferred.
+- `DbInitializer` ensures DB is created & roles/users are seeded on startup.
+- Minimal, production-ready services (books, cart, orders) are included.
+
+```
+
+```xml
+// Bookory/Bookory.csproj
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Bookory</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="8.0.7" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.7" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.7">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+</Project>
+```
+
+```csharp
+// Bookory/Program.cs
+using Bookory.Data;
+using Bookory.Models;
+using Bookory.Services;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+
+var builder = WebApplication.CreateBuilder(args);
+
+// DB: SQL Server (change to UseSqlite if needed)
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// Identity (Roles)
+builder.Services.AddIdentity<ApplicationUser, IdentityRole>(options =>
+{
+    options.Password.RequireNonAlphanumeric = false;
+    options.Password.RequireUppercase = false;
+    options.SignIn.RequireConfirmedAccount = false;
+}).AddEntityFrameworkStores<AppDbContext>()
+  .AddDefaultTokenProviders();
+
+builder.Services.ConfigureApplicationCookie(o =>
+{
+    o.LoginPath = "/Account/Login";
+    o.AccessDeniedPath = "/Account/Login";
+});
+
+builder.Services.AddControllersWithViews();
+
+// DI: Services
+builder.Services.AddScoped<IBookService, BookService>();
+builder.Services.AddScoped<ICartService, CartService>();
+builder.Services.AddScoped<IOrderService, OrderService>();
+
+// Seed
+builder.Services.AddScoped<DbInitializer>();
+
+var app = builder.Build();
+
+using (var scope = app.Services.CreateScope())
+{
+    var init = scope.ServiceProvider.GetRequiredService<DbInitializer>();
+    await init.RunAsync(); // ensures DB + roles + admin + demo data
+}
+
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler("/Home/Error");
+    app.UseHsts();
+}
+
+app.UseHttpsRedirection();
+app.UseStaticFiles();
+
+app.UseRouting();
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapControllerRoute(
+    name: "areas",
+    pattern: "{area:exists}/{controller=Dashboard}/{action=Index}/{id?}");
+
+app.MapControllerRoute(
+    name: "default",
+    pattern: "{controller=Home}/{action=Index}/{id?}");
+
+app.Run();
+```
+
+```json
+// Bookory/appsettings.json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=(localdb)\\mssqllocaldb;Database=BookoryDb;Trusted_Connection=True;MultipleActiveResultSets=true;TrustServerCertificate=True"
+  },
+  "Admin": {
+    "Email": "admin@bookory.local",
+    "Password": "Admin@12345"
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*"
+}
+```
+
+```csharp
+// Bookory/Data/AppDbContext.cs
+using Bookory.Models;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
+
+namespace Bookory.Data;
+
+public class AppDbContext : IdentityDbContext<ApplicationUser>
+{
+    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+
+    public DbSet<Book> Books => Set<Book>();
+    public DbSet<Category> Categories => Set<Category>();
+    public DbSet<CartItem> CartItems => Set<CartItem>();
+    public DbSet<Order> Orders => Set<Order>();
+    public DbSet<OrderItem> OrderItems => Set<OrderItem>();
+    public DbSet<WishlistItem> WishlistItems => Set<WishlistItem>();
+
+    protected override void OnModelCreating(ModelBuilder b)
+    {
+        base.OnModelCreating(b);
+
+        b.Entity<Category>().HasIndex(c => c.Name).IsUnique();
+        b.Entity<Book>().HasOne(x => x.Category)
+            .WithMany(c => c.Books)
+            .HasForeignKey(x => x.CategoryId)
+            .OnDelete(DeleteBehavior.Restrict);
+
+        b.Entity<CartItem>().HasIndex(x => new { x.UserId, x.BookId }).IsUnique();
+        b.Entity<WishlistItem>().HasIndex(x => new { x.UserId, x.BookId }).IsUnique();
+
+        b.Entity<OrderItem>().HasOne(x => x.Book)
+            .WithMany()
+            .HasForeignKey(x => x.BookId);
+    }
+}
+```
+
+```csharp
+// Bookory/Data/DbInitializer.cs
+using Bookory.Models;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
+
+namespace Bookory.Data;
+
+public class DbInitializer
+{
+    private readonly AppDbContext _db;
+    private readonly RoleManager<IdentityRole> _roles;
+    private readonly UserManager<ApplicationUser> _users;
+    private readonly IConfiguration _cfg;
+
+    public DbInitializer(AppDbContext db, RoleManager<IdentityRole> roles, UserManager<ApplicationUser> users, IConfiguration cfg)
+    { _db = db; _roles = roles; _users = users; _cfg = cfg; }
+
+    public async Task RunAsync()
+    {
+        // Why EnsureCreated: avoid migrations step for quick start.
+        await _db.Database.EnsureCreatedAsync();
+
+        foreach (var role in new[] { "Admin", "Customer" })
+            if (!await _roles.RoleExistsAsync(role))
+                await _roles.CreateAsync(new IdentityRole(role));
+
+        var adminEmail = _cfg["Admin:Email"]!;
+        var adminPwd = _cfg["Admin:Password"]!;
+        var admin = await _users.FindByEmailAsync(adminEmail);
+        if (admin == null)
+        {
+            admin = new ApplicationUser { UserName = adminEmail, Email = adminEmail, FullName = "Admin" };
+            await _users.CreateAsync(admin, adminPwd);
+            await _users.AddToRoleAsync(admin, "Admin");
+        }
+
+        // seed sample data if empty
+        if (!await _db.Categories.AnyAsync())
+        {
+            var cat1 = new Category { Name = "Fiction" };
+            var cat2 = new Category { Name = "Non-Fiction" };
+            var cat3 = new Category { Name = "Technology" };
+            _db.Categories.AddRange(cat1, cat2, cat3);
+            _db.Books.AddRange(
+                new Book { Title = "Clean Code", Author = "Robert C. Martin", Price = 29.99m, Stock = 12, Category = cat3, CoverUrl = "/images/supercoins1.webp" },
+                new Book { Title = "The Pragmatic Programmer", Author = "Andrew Hunt", Price = 31.50m, Stock = 10, Category = cat3, CoverUrl = "/images/upi.png" },
+                new Book { Title = "1984", Author = "George Orwell", Price = 12.00m, Stock = 25, Category = cat1, CoverUrl = "/images/rupay.jpg" }
+            );
+            await _db.SaveChangesAsync();
+        }
+    }
+}
+```
+
+```csharp
+// Bookory/Models/ApplicationUser.cs
+using Microsoft.AspNetCore.Identity;
+
+namespace Bookory.Models;
+
+public class ApplicationUser : IdentityUser
+{
+    public string? FullName { get; set; }
+}
+```
+
+```csharp
+// Bookory/Models/Enums.cs
+namespace Bookory.Models;
+
+public enum OrderStatus { Pending, Paid, Shipped, Completed, Cancelled }
+public enum PaymentMethod { COD, UPI, Card }
+```
+
+```csharp
+// Bookory/Models/Category.cs
+using System.ComponentModel.DataAnnotations;
+
+namespace Bookory.Models;
+
+public class Category
+{
+    public int Id { get; set; }
+    [MaxLength(80)]
+    public required string Name { get; set; }
+    public ICollection<Book> Books { get; set; } = new List<Book>();
+}
+```
+
+```csharp
+// Bookory/Models/Book.cs
+using System.ComponentModel.DataAnnotations;
+
+namespace Bookory.Models;
+
+public class Book
+{
+    public int Id { get; set; }
+    [MaxLength(160)] public required string Title { get; set; }
+    [MaxLength(120)] public required string Author { get; set; }
+    [MaxLength(160)] public string? Publisher { get; set; }
+    [MaxLength(13)] public string? Isbn13 { get; set; }
+    public decimal Price { get; set; }
+    public int Stock { get; set; }
+    public string? CoverUrl { get; set; }
+
+    public int CategoryId { get; set; }
+    public Category? Category { get; set; }
+}
+```
+
+```csharp
+// Bookory/Models/CartItem.cs
+using System.ComponentModel.DataAnnotations;
+
+namespace Bookory.Models;
+
+public class CartItem
+{
+    public int Id { get; set; }
+    public required string UserId { get; set; }
+    public int BookId { get; set; }
+    public Book? Book { get; set; }
+    [Range(1, 99)] public int Quantity { get; set; } = 1;
+}
+```
+
+```csharp
+// Bookory/Models/WishlistItem.cs
+namespace Bookory.Models;
+
+public class WishlistItem
+{
+    public int Id { get; set; }
+    public required string UserId { get; set; }
+    public int BookId { get; set; }
+    public Book? Book { get; set; }
+}
+```
+
+```csharp
+// Bookory/Models/Order.cs
+using System.ComponentModel.DataAnnotations;
+
+namespace Bookory.Models;
+
+public class Order
+{
+    public int Id { get; set; }
+    public required string UserId { get; set; }
+    public ApplicationUser? User { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public OrderStatus Status { get; set; } = OrderStatus.Pending;
+    public PaymentMethod PaymentMethod { get; set; } = PaymentMethod.COD;
+    public decimal Total { get; set; }
+    public ICollection<OrderItem> Items { get; set; } = new List<OrderItem>();
+}
+
+public class OrderItem
+{
+    public int Id { get; set; }
+    public int OrderId { get; set; }
+    public Order? Order { get; set; }
+    public int BookId { get; set; }
+    public Book? Book { get; set; }
+    public int Quantity { get; set; }
+    public decimal UnitPrice { get; set; }
+}
+```
+
+```csharp
+// Bookory/Services/IBookService.cs
+using Bookory.Models;
+
+namespace Bookory.Services;
+
+public interface IBookService
+{
+    Task<IReadOnlyList<Book>> GetAllAsync(string? q = null, int? categoryId = null);
+    Task<Book?> GetByIdAsync(int id);
+    Task<Book> CreateAsync(Book b);
+    Task UpdateAsync(Book b);
+    Task DeleteAsync(int id);
+    Task<IReadOnlyList<Category>> GetCategoriesAsync();
+}
+```
+
+```csharp
+// Bookory/Services/ICartService.cs
+using Bookory.Models;
+
+namespace Bookory.Services;
+
+public interface ICartService
+{
+    Task<IReadOnlyList<CartItem>> GetCartAsync(string userId);
+    Task AddAsync(string userId, int bookId, int qty = 1);
+    Task UpdateQtyAsync(int cartItemId, int qty);
+    Task RemoveAsync(int cartItemId);
+    Task ClearAsync(string userId);
+}
+```
+
+```csharp
+// Bookory/Services/IOrderService.cs
+using Bookory.Models;
+
+namespace Bookory.Services;
+
+public interface IOrderService
+{
+    Task<Order> CheckoutAsync(string userId, PaymentMethod method);
+    Task<IReadOnlyList<Order>> GetOrdersForUserAsync(string userId);
+    Task<Order?> GetOrderAsync(int id, string userId);
+    // Admin
+    Task<IReadOnlyList<Order>> GetAllOrdersAsync();
+    Task UpdateStatusAsync(int orderId, OrderStatus status);
+}
+```
+
+```csharp
+// Bookory/Services/IWishlistService.cs
+using Bookory.Models;
+
+namespace Bookory.Services;
+
+public interface IWishlistService
+{
+    Task<IReadOnlyList<WishlistItem>> GetAsync(string userId);
+    Task AddAsync(string userId, int bookId);
+    Task RemoveAsync(string userId, int bookId);
+}
+```
+
+```csharp
+// Bookory/Services/BookService.cs
+using Bookory.Data;
+using Bookory.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace Bookory.Services;
+
+public class BookService : IBookService
+{
+    private readonly AppDbContext _db;
+    public BookService(AppDbContext db) => _db = db;
+
+    public async Task<IReadOnlyList<Book>> GetAllAsync(string? q = null, int? categoryId = null)
+    {
+        var query = _db.Books.Include(b => b.Category).AsQueryable();
+        if (!string.IsNullOrWhiteSpace(q))
+            query = query.Where(b => b.Title.Contains(q) || b.Author.Contains(q));
+        if (categoryId.HasValue)
+            query = query.Where(b => b.CategoryId == categoryId);
+        return await query.OrderBy(b => b.Title).ToListAsync();
+    }
+
+    public Task<Book?> GetByIdAsync(int id) =>
+        _db.Books.Include(b => b.Category).FirstOrDefaultAsync(x => x.Id == id);
+
+    public async Task<Book> CreateAsync(Book b)
+    { _db.Books.Add(b); await _db.SaveChangesAsync(); return b; }
+
+    public async Task UpdateAsync(Book b)
+    { _db.Books.Update(b); await _db.SaveChangesAsync(); }
+
+    public async Task DeleteAsync(int id)
+    { var e = await _db.Books.FindAsync(id); if (e != null) { _db.Remove(e); await _db.SaveChangesAsync(); } }
+
+    public Task<IReadOnlyList<Category>> GetCategoriesAsync() =>
+        Task.FromResult((IReadOnlyList<Category>)_db.Categories.OrderBy(c => c.Name).ToList());
+}
+```
+
+```csharp
+// Bookory/Services/CartService.cs
+using Bookory.Data;
+using Bookory.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace Bookory.Services;
+
+public class CartService : ICartService
+{
+    private readonly AppDbContext _db;
+    public CartService(AppDbContext db) => _db = db;
+
+    public async Task<IReadOnlyList<CartItem>> GetCartAsync(string userId) =>
+        await _db.CartItems.Include(c => c.Book).Where(c => c.UserId == userId).ToListAsync();
+
+    public async Task AddAsync(string userId, int bookId, int qty = 1)
+    {
+        var item = await _db.CartItems.FirstOrDefaultAsync(c => c.UserId == userId && c.BookId == bookId);
+        if (item == null) _db.CartItems.Add(new CartItem { UserId = userId, BookId = bookId, Quantity = qty });
+        else item.Quantity += qty;
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task UpdateQtyAsync(int cartItemId, int qty)
+    {
+        var item = await _db.CartItems.FindAsync(cartItemId);
+        if (item != null) { item.Quantity = Math.Max(1, Math.Min(99, qty)); await _db.SaveChangesAsync(); }
+    }
+
+    public async Task RemoveAsync(int cartItemId)
+    { var it = await _db.CartItems.FindAsync(cartItemId); if (it != null) { _db.Remove(it); await _db.SaveChangesAsync(); } }
+
+    public async Task ClearAsync(string userId)
+    { var items = _db.CartItems.Where(c => c.UserId == userId); _db.CartItems.RemoveRange(items); await _db.SaveChangesAsync(); }
+}
+```
+
+```csharp
+// Bookory/Services/OrderService.cs
+using Bookory.Data;
+using Bookory.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace Bookory.Services;
+
+public class OrderService : IOrderService
+{
+    private readonly AppDbContext _db;
+    public OrderService(AppDbContext db) => _db = db;
+
+    public async Task<Order> CheckoutAsync(string userId, PaymentMethod method)
+    {
+        var cart = await _db.CartItems.Include(c => c.Book).Where(c => c.UserId == userId).ToListAsync();
+        if (cart.Count == 0) throw new InvalidOperationException("Cart empty");
+        var order = new Order { UserId = userId, PaymentMethod = method, Status = method == PaymentMethod.COD ? OrderStatus.Pending : OrderStatus.Paid };
+        foreach (var c in cart)
+        {
+            order.Items.Add(new OrderItem { BookId = c.BookId, Quantity = c.Quantity, UnitPrice = c.Book!.Price });
+            c.Book!.Stock = Math.Max(0, c.Book.Stock - c.Quantity);
+        }
+        order.Total = order.Items.Sum(i => i.UnitPrice * i.Quantity);
+        _db.Orders.Add(order);
+        _db.CartItems.RemoveRange(cart);
+        await _db.SaveChangesAsync();
+        return order;
+    }
+
+    public async Task<IReadOnlyList<Order>> GetOrdersForUserAsync(string userId) =>
+        await _db.Orders.Include(o => o.Items).ThenInclude(i => i.Book)
+            .Where(o => o.UserId == userId).OrderByDescending(o => o.CreatedAt).ToListAsync();
+
+    public Task<Order?> GetOrderAsync(int id, string userId) =>
+        _db.Orders.Include(o => o.Items).ThenInclude(i => i.Book)
+            .FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId);
+
+    public async Task<IReadOnlyList<Order>> GetAllOrdersAsync() =>
+        await _db.Orders.Include(o => o.User).Include(o => o.Items).ThenInclude(i => i.Book)
+            .OrderByDescending(o => o.CreatedAt).ToListAsync();
+
+    public async Task UpdateStatusAsync(int orderId, OrderStatus status)
+    { var o = await _db.Orders.FindAsync(orderId); if (o != null) { o.Status = status; await _db.SaveChangesAsync(); } }
+}
+```
+
+```csharp
+// Bookory/Controllers/HomeController.cs
+using Bookory.Services;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Bookory.Controllers;
+
+public class HomeController(IBookService books) : Controller
+{
+    public async Task<IActionResult> Index() => View(await books.GetAllAsync());
+}
+```
+
+```csharp
+// Bookory/Controllers/AccountController.cs
+using Bookory.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Bookory.Controllers;
+
+public class AccountController(UserManager<ApplicationUser> users, SignInManager<ApplicationUser> signin) : Controller
+{
+    [HttpGet]
+    public IActionResult Login(string? returnUrl = null) => View(new LoginVm { ReturnUrl = returnUrl });
+
+    [HttpPost]
+    public async Task<IActionResult> Login(LoginVm vm)
+    {
+        if (!ModelState.IsValid) return View(vm);
+        var user = await users.FindByEmailAsync(vm.Email);
+        if (user == null) { ModelState.AddModelError("", "Invalid credentials"); return View(vm); }
+        var result = await signin.PasswordSignInAsync(user, vm.Password, vm.RememberMe, lockoutOnFailure: false);
+        if (result.Succeeded) return Redirect(vm.ReturnUrl ?? "/");
+        ModelState.AddModelError("", "Invalid credentials");
+        return View(vm);
+    }
+
+    [HttpGet]
+    public IActionResult Register() => View(new RegisterVm());
+
+    [HttpPost]
+    public async Task<IActionResult> Register(RegisterVm vm)
+    {
+        if (!ModelState.IsValid) return View(vm);
+        var user = new ApplicationUser { UserName = vm.Email, Email = vm.Email, FullName = vm.FullName };
+        var res = await users.CreateAsync(user, vm.Password);
+        if (res.Succeeded)
+        {
+            await users.AddToRoleAsync(user, "Customer");
+            await signin.SignInAsync(user, isPersistent: true);
+            return RedirectToAction("Index", "Home");
+        }
+        foreach (var e in res.Errors) ModelState.AddModelError("", e.Description);
+        return View(vm);
+    }
+
+    [Authorize]
+    public async Task<IActionResult> Logout()
+    {
+        await signin.SignOutAsync();
+        return RedirectToAction("Index", "Home");
+    }
+
+    [Authorize]
+    [HttpGet]
+    public async Task<IActionResult> Profile()
+    {
+        var user = await users.GetUserAsync(User);
+        var vm = new ProfileVm { FullName = user!.FullName, Email = user.Email! };
+        return View(vm);
+    }
+
+    [Authorize]
+    [HttpPost]
+    public async Task<IActionResult> Profile(ProfileVm vm)
+    {
+        if (!ModelState.IsValid) return View(vm);
+        var user = await users.GetUserAsync(User);
+        if (user == null) return RedirectToAction("Login");
+        user.FullName = vm.FullName;
+        await users.UpdateAsync(user);
+        ViewBag.Saved = true;
+        return View(vm);
+    }
+}
+
+public class LoginVm
+{
+    public string? ReturnUrl { get; set; }
+    public required string Email { get; set; }
+    public required string Password { get; set; }
+    public bool RememberMe { get; set; }
+}
+
+public class RegisterVm
+{
+    public required string FullName { get; set; }
+    public required string Email { get; set; }
+    public required string Password { get; set; }
+}
+
+public class ProfileVm
+{
+    public string? FullName { get; set; }
+    public required string Email { get; set; }
+}
+```
+
+```csharp
+// Bookory/Controllers/ShopController.cs
+using Bookory.Services;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Bookory.Controllers;
+
+public class ShopController(IBookService books) : Controller
+{
+    public async Task<IActionResult> Index(string? q, int? categoryId)
+    {
+        ViewBag.Categories = await books.GetCategoriesAsync();
+        ViewBag.Query = q; ViewBag.CategoryId = categoryId;
+        return View(await books.GetAllAsync(q, categoryId));
+    }
+
+    public async Task<IActionResult> Details(int id)
+    {
+        var b = await books.GetByIdAsync(id);
+        if (b == null) return NotFound();
+        return View(b);
+    }
+}
+```
+
+```csharp
+// Bookory/Controllers/CartController.cs
+using Bookory.Models;
+using Bookory.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+
+namespace Bookory.Controllers;
+
+[Authorize]
+public class CartController(ICartService cart, IOrderService orders) : Controller
+{
+    string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+
+    public async Task<IActionResult> Index() => View(await cart.GetCartAsync(UserId));
+
+    [HttpPost]
+    public async Task<IActionResult> Add(int bookId, int qty = 1)
+    { await cart.AddAsync(UserId, bookId, qty); return RedirectToAction("Index"); }
+
+    [HttpPost]
+    public async Task<IActionResult> Update(int id, int qty)
+    { await cart.UpdateQtyAsync(id, qty); return RedirectToAction("Index"); }
+
+    [HttpPost]
+    public async Task<IActionResult> Remove(int id)
+    { await cart.RemoveAsync(id); return RedirectToAction("Index"); }
+
+    public IActionResult Checkout() => View();
+
+    [HttpPost]
+    public async Task<IActionResult> Checkout(PaymentMethod method)
+    {
+        var order = await orders.CheckoutAsync(UserId, method);
+        return RedirectToAction("PaymentSuccess", new { id = order.Id });
+    }
+
+    public IActionResult Payment() => View();
+
+    public async Task<IActionResult> PaymentSuccess(int id)
+    {
+        var myOrders = await orders.GetOrdersForUserAsync(UserId);
+        var order = myOrders.FirstOrDefault(o => o.Id == id);
+        if (order == null) return NotFound();
+        return View(order);
+    }
+}
+```
+
+```csharp
+// Bookory/Controllers/OrdersController.cs
+using Bookory.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+
+namespace Bookory.Controllers;
+
+[Authorize]
+public class OrdersController(IOrderService orders) : Controller
+{
+    string UserId => User.FindFirstValue(System.Security.Claims.ClaimTypes.NameIdentifier)!;
+
+    public async Task<IActionResult> Index() => View(await orders.GetOrdersForUserAsync(UserId));
+    public async Task<IActionResult> Details(int id)
+    {
+        var order = await orders.GetOrderAsync(id, UserId);
+        return order == null ? NotFound() : View(order);
+    }
+}
+```
+
+```csharp
+// Bookory/Controllers/WishlistController.cs
+using Bookory.Data;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+
+namespace Bookory.Controllers;
+
+[Authorize]
+public class WishlistController(AppDbContext db) : Controller
+{
+    string UserId => User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+
+    public async Task<IActionResult> Index()
+    {
+        var items = await db.WishlistItems.Include(w => w.Book).Where(w => w.UserId == UserId).ToListAsync();
+        return View(items);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Add(int bookId)
+    {
+        if (!await db.WishlistItems.AnyAsync(w => w.UserId == UserId && w.BookId == bookId))
+            db.WishlistItems.Add(new() { UserId = UserId, BookId = bookId });
+        await db.SaveChangesAsync();
+        return RedirectToAction("Index", "Shop");
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Remove(int bookId)
+    {
+        var it = await db.WishlistItems.FirstOrDefaultAsync(w => w.UserId == UserId && w.BookId == bookId);
+        if (it != null) db.WishlistItems.Remove(it);
+        await db.SaveChangesAsync();
+        return RedirectToAction("Index");
+    }
+}
+```
+
+```csharp
+// Bookory/Areas/Admin/Controllers/DashboardController.cs
+using Bookory.Data;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace Bookory.Areas.Admin.Controllers;
+
+[Area("Admin")]
+[Authorize(Roles = "Admin")]
+public class DashboardController(AppDbContext db) : Controller
+{
+    public async Task<IActionResult> Index()
+    {
+        ViewBag.BookCount = await db.Books.CountAsync();
+        ViewBag.OrderCount = await db.Orders.CountAsync();
+        ViewBag.UserCount = await db.Users.CountAsync();
+        return View();
+    }
+}
+```
+
+```csharp
+// Bookory/Areas/Admin/Controllers/BooksController.cs
+using Bookory.Models;
+using Bookory.Services;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Bookory.Areas.Admin.Controllers;
+
+[Area("Admin")]
+[Authorize(Roles = "Admin")]
+public class BooksController(IBookService books) : Controller
+{
+    public async Task<IActionResult> Index() => View(await books.GetAllAsync());
+
+    [HttpGet]
+    public async Task<IActionResult> Create()
+    { ViewBag.Categories = await books.GetCategoriesAsync(); return View(new Book()); }
+
+    [HttpPost]
+    public async Task<IActionResult> Create(Book b)
+    {
+        if (!ModelState.IsValid) { ViewBag.Categories = await books.GetCategoriesAsync(); return View(b); }
+        await books.CreateAsync(b); return RedirectToAction("Index");
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> Edit(int id)
+    {
+        var b = await books.GetByIdAsync(id); if (b == null) return NotFound();
+        ViewBag.Categories = await books.GetCategoriesAsync();
+        return View(b);
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Edit(Book b)
+    {
+        if (!ModelState.IsValid) { ViewBag.Categories = await books.GetCategoriesAsync(); return View(b); }
+        await books.UpdateAsync(b); return RedirectToAction("Index");
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> Delete(int id)
+    { await books.DeleteAsync(id); return RedirectToAction("Index"); }
+}
+```
+
+```csharp
+// Bookory/Areas/Admin/Controllers/CustomersController.cs
+using Bookory.Data;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+namespace Bookory.Areas.Admin.Controllers;
+
+[Area("Admin")]
+[Authorize(Roles = "Admin")]
+public class CustomersController(UserManager<Models.ApplicationUser> users, AppDbContext db) : Controller
+{
+    public async Task<IActionResult> Index()
+    {
+        var list = await users.Users.ToListAsync();
+        return View(list);
+    }
+}
+```
+
+```html
+@* Bookory/Views/Shared/_Layout.cshtml *@
+@using Microsoft.AspNetCore.Identity
+@inject SignInManager<Bookory.Models.ApplicationUser> SignInManager
+@inject UserManager<Bookory.Models.ApplicationUser> UserManager
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>@ViewData["Title"] - Bookory</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="~/css/site.css" rel="stylesheet" />
+  @RenderSection("Styles", required: false)
+</head>
+<body style="font-family: 'Poppins', sans-serif;">
+  <header class="border-bottom bg-white">
+    <nav class="navbar navbar-expand-lg container">
+      <a class="navbar-brand fw-bold" asp-controller="Home" asp-action="Index">Bookory</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarsExample"><span class="navbar-toggler-icon"></span></button>
+      <div class="collapse navbar-collapse" id="navbarsExample">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item"><a class="nav-link" asp-controller="Shop" asp-action="Index">Shop</a></li>
+          <li class="nav-item"><a class="nav-link" asp-controller="Orders" asp-action="Index">My Orders</a></li>
+          <li class="nav-item"><a class="nav-link" asp-controller="Wishlist" asp-action="Index">Wishlist</a></li>
+          @if (User.IsInRole("Admin")) {
+            <li class="nav-item"><a class="nav-link text-danger" asp-area="Admin" asp-controller="Dashboard" asp-action="Index">Admin</a></li>
+          }
+        </ul>
+        <ul class="navbar-nav">
+          @if (SignInManager.IsSignedIn(User)) {
+            <li class="nav-item"><a class="nav-link" asp-controller="Account" asp-action="Profile"><i class="bi bi-person"></i> @User.Identity!.Name</a></li>
+            <li class="nav-item"><a class="nav-link" asp-controller="Cart" asp-action="Index"><i class="bi bi-cart"></i></a></li>
+            <li class="nav-item"><a class="nav-link" asp-controller="Account" asp-action="Logout">Logout</a></li>
+          } else {
+            <li class="nav-item"><a class="nav-link" asp-controller="Account" asp-action="Login">Login</a></li>
+            <li class="nav-item"><a class="nav-link" asp-controller="Account" asp-action="Register">Register</a></li>
+          }
+        </ul>
+      </div>
+    </nav>
+  </header>
+  <main class="container py-4">
+    @RenderBody()
+  </main>
+  <footer class="border-top py-4 text-center small bg-light">
+    <div class="container">© @DateTime.UtcNow.Year Bookory</div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  @RenderSection("Scripts", required: false)
+</body>
+</html>
+```
+
+```html
+@* Bookory/Views/Home/Index.cshtml  (converted from homepage.html) *@
+@model IReadOnlyList<Bookory.Models.Book>
+@{
+    ViewData["Title"] = "Home";
+}
+@section Styles {
+<style>
+.hero{background:url('https://images.unsplash.com/photo-1507842217343-583bb7270b66?q=80&w=2070&auto=format&fit=crop') center/cover; padding:6rem 0; color:#fff; position:relative}
+.hero::before{content:'';position:absolute;inset:0;background:rgba(0,0,0,.55)}
+.hero>.container{position:relative;z-index:1}
+.card.book:hover{transform:translateY(-4px)}
+</style>
+}
+<div class="hero mb-5">
+  <div class="container">
+    <h1 class="display-4 fw-bold">Find your next favorite book</h1>
+    <p class="lead">Curated titles across tech, fiction & more.</p>
+    <a class="btn btn-primary btn-lg" asp-controller="Shop" asp-action="Index">Shop Now</a>
+  </div>
+</div>
+<h2 class="mb-3">Featured</h2>
+<div class="row g-3">
+  @foreach (var b in Model.Take(8)) {
+    <div class="col-6 col-md-3">
+      <div class="card book h-100">
+        <img class="card-img-top" src="@(string.IsNullOrEmpty(b.CoverUrl) ? "https://via.placeholder.com/300x400?text=Book" : b.CoverUrl)" alt="@b.Title" />
+        <div class="card-body">
+          <h6 class="card-title">@b.Title</h6>
+          <div class="text-muted small">@b.Author</div>
+          <div class="fw-semibold mt-1">₹ @b.Price</div>
+        </div>
+        <div class="card-footer bg-white border-0">
+          <form asp-controller="Cart" asp-action="Add" method="post" class="d-flex gap-2">
+            <input type="hidden" name="bookId" value="@b.Id" />
+            <button class="btn btn-outline-primary w-100" type="submit"><i class="bi bi-cart"></i> Add</button>
+            <button class="btn btn-outline-secondary" formaction="@Url.Action("Add", "Wishlist", new { bookId = b.Id })" formmethod="post" type="submit"><i class="bi bi-heart"></i></button>
+          </form>
+        </div>
+      </div>
+    </div>
+  }
+</div>
+```
+
+```html
+@* Bookory/Views/Shop/Index.cshtml (converted from shoppage.html) *@
+@model IReadOnlyList<Bookory.Models.Book>
+@{
+    var categories = (IReadOnlyList<Bookory.Models.Category>)ViewBag.Categories;
+    var q = (string?)ViewBag.Query;
+    int? catId = (int?)ViewBag.CategoryId;
+    ViewData["Title"] = "Shop";
+}
+<form method="get" class="row g-2 align-items-end mb-4">
+  <div class="col-md-6">
+    <label class="form-label">Search</label>
+    <input class="form-control" name="q" value="@q" placeholder="Title or author" />
+  </div>
+  <div class="col-md-4">
+    <label class="form-label">Category</label>
+    <select name="categoryId" class="form-select">
+      <option value="">All</option>
+      @foreach(var c in categories){
+        <option value="@c.Id" selected="@(catId==c.Id)">@c.Name</option>
+      }
+    </select>
+  </div>
+  <div class="col-md-2">
+    <button class="btn btn-primary w-100" type="submit">Filter</button>
+  </div>
+</form>
+<div class="row g-3">
+  @foreach (var b in Model) {
+    <div class="col-6 col-md-3">
+      <div class="card h-100">
+        <img class="card-img-top" src="@(string.IsNullOrEmpty(b.CoverUrl) ? "https://via.placeholder.com/300x400?text=Book" : b.CoverUrl)" />
+        <div class="card-body">
+          <a asp-action="Details" asp-route-id="@b.Id" class="stretched-link text-decoration-none"><h6 class="mb-0">@b.Title</h6></a>
+          <small class="text-muted">@b.Author</small>
+          <div class="mt-2 fw-semibold">₹ @b.Price</div>
+        </div>
+        <div class="card-footer bg-white border-0">
+          <form asp-controller="Cart" asp-action="Add" method="post" class="d-flex gap-2">
+            <input type="hidden" name="bookId" value="@b.Id" />
+            <button class="btn btn-outline-primary w-100" type="submit"><i class="bi bi-cart"></i> Add</button>
+            <button class="btn btn-outline-secondary" formaction="@Url.Action("Add", "Wishlist", new { bookId = b.Id })" formmethod="post" type="submit"><i class="bi bi-heart"></i></button>
+          </form>
+        </div>
+      </div>
+    </div>
+  }
+</div>
+```
+
+```html
+@* Bookory/Views/Account/Login.cshtml (converted from login.html) *@
+@model Bookory.Controllers.LoginVm
+@{ ViewData["Title"] = "Login"; }
+<h2 class="mb-3">Welcome back</h2>
+<form method="post" class="row g-3" asp-action="Login">
+  <div class="col-12">
+    <label class="form-label">Email</label>
+    <input asp-for="Email" class="form-control" />
+  </div>
+  <div class="col-12">
+    <label class="form-label">Password</label>
+    <input asp-for="Password" class="form-control" type="password" />
+  </div>
+  <div class="col-12 form-check">
+    <input class="form-check-input" asp-for="RememberMe" /> <label asp-for="RememberMe" class="form-check-label"></label>
+  </div>
+  <div class="col-12">
+    <button class="btn btn-primary" type="submit">Login</button>
+  </div>
+</form>
+```
+
+```html
+@* Bookory/Views/Account/Register.cshtml (converted from registrationpage.html) *@
+@model Bookory.Controllers.RegisterVm
+@{ ViewData["Title"] = "Register"; }
+<h2 class="mb-3">Create your account</h2>
+<form method="post" class="row g-3">
+  <div class="col-md-6">
+    <label class="form-label">Full name</label>
+    <input asp-for="FullName" class="form-control" />
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Email</label>
+    <input asp-for="Email" class="form-control" />
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Password</label>
+    <input asp-for="Password" class="form-control" type="password" />
+  </div>
+  <div class="col-12">
+    <button class="btn btn-primary" type="submit">Register</button>
+  </div>
+</form>
+```
+
+```html
+@* Bookory/Views/Account/Profile.cshtml (converted from myprofile.html) *@
+@model Bookory.Controllers.ProfileVm
+@{ ViewData["Title"] = "My Profile"; }
+<h2 class="mb-3">My Profile</h2>
+@if (ViewBag.Saved == true) { <div class="alert alert-success">Saved</div> }
+<form method="post" class="row g-3">
+  <div class="col-md-6">
+    <label class="form-label">Full name</label>
+    <input asp-for="FullName" class="form-control" />
+  </div>
+  <div class="col-md-6">
+    <label class="form-label">Email</label>
+    <input asp-for="Email" class="form-control" disabled />
+  </div>
+  <div class="col-12">
+    <button class="btn btn-primary" type="submit">Update</button>
+  </div>
+</form>
+```
+
+```html
+@* Bookory/Views/Cart/Index.cshtml (converted from cart.html) *@
+@model IReadOnlyList<Bookory.Models.CartItem>
+@{ ViewData["Title"] = "Cart"; }
+<h2 class="mb-3">Your Cart</h2>
+@if (!Model.Any()) { <div class="alert alert-info">Your cart is empty.</div> }
+<table class="table align-middle" style="min-width:700px">
+  <thead><tr><th>Book</th><th>Qty</th><th>Price</th><th></th></tr></thead>
+  <tbody>
+  @foreach (var it in Model) {
+    <tr>
+      <td>
+        <div class="d-flex align-items-center gap-3">
+          <img src="@(string.IsNullOrEmpty(it.Book?.CoverUrl) ? "https://via.placeholder.com/64x90?text=Book" : it.Book!.CoverUrl)" alt="@it.Book!.Title" width="64" />
+          <div>
+            <div class="fw-semibold">@it.Book!.Title</div>
+            <div class="text-muted small">@it.Book!.Author</div>
+          </div>
+        </div>
+      </td>
+      <td style="width:160px;">
+        <form method="post" asp-action="Update" class="d-flex align-items-center gap-2">
+          <input type="hidden" name="id" value="@it.Id" />
+          <input type="number" min="1" max="99" name="qty" value="@it.Quantity" class="form-control" />
+          <button class="btn btn-outline-secondary" type="submit">Update</button>
+        </form>
+      </td>
+      <td>₹ @(it.Book!.Price * it.Quantity)</td>
+      <td>
+        <form method="post" asp-action="Remove"><input type="hidden" name="id" value="@it.Id" /><button class="btn btn-link text-danger">Remove</button></form>
+      </td>
+    </tr>
+  }
+  </tbody>
+</table>
+@if (Model.Any()) {
+  <div class="text-end">
+    <a class="btn btn-outline-secondary" asp-controller="Shop" asp-action="Index">Continue shopping</a>
+    <a class="btn btn-primary" asp-action="Checkout">Proceed to checkout</a>
+  </div>
+}
+```
+
+```html
+@* Bookory/Views/Cart/Checkout.cshtml (converted from checkout.html) *@
+@{ ViewData["Title"] = "Checkout"; }
+<h2 class="mb-3">Checkout</h2>
+<form method="post" asp-action="Checkout" class="row g-3">
+  <div class="col-md-6">
+    <label class="form-label">Payment method</label>
+    <select class="form-select" name="method">
+      <option value="COD">Cash on Delivery</option>
+      <option value="UPI">UPI</option>
+      <option value="Card">Card</option>
+    </select>
+    <div class="small text-muted">No real charges. Demo only.</div>
+  </div>
+  <div class="col-12">
+    <button class="btn btn-primary" type="submit">Place order</button>
+  </div>
+</form>
+```
+
+```html
+@* Bookory/Views/Cart/Payment.cshtml (converted from payment.html) *@
+@{ ViewData["Title"] = "Payment"; }
+<h2 class="mb-3">Payment</h2>
+<p>Use this page to simulate UPI/Card flows if you need a separate step.</p>
+```
+
+```html
+@* Bookory/Views/Cart/PaymentSuccess.cshtml (converted from paymentsuccess.html) *@
+@model Bookory.Models.Order
+@{ ViewData["Title"] = "Payment Success"; }
+<div class="text-center py-5">
+  <img src="~/images/supercoins1.webp" alt="success" style="max-width:200px"/>
+  <h2 class="mt-3">Thank you! Order #@Model.Id confirmed.</h2>
+  <p class="text-muted">Total: ₹ @Model.Total</p>
+  <a class="btn btn-primary" asp-controller="Orders" asp-action="Index">View Orders</a>
+</div>
+```
+
+```html
+@* Bookory/Views/Wishlist/Index.cshtml (converted from wishlist.html) *@
+@model IReadOnlyList<Bookory.Models.WishlistItem>
+@{ ViewData["Title"] = "Wishlist"; }
+<h2 class="mb-3">Wishlist</h2>
+@if (!Model.Any()) { <div class="alert alert-info">No items in wishlist.</div> }
+<div class="row g-3">
+  @foreach (var it in Model) {
+    <div class="col-6 col-md-3">
+      <div class="card h-100">
+        <img class="card-img-top" src="@(string.IsNullOrEmpty(it.Book?.CoverUrl) ? "https://via.placeholder.com/300x400?text=Book" : it.Book!.CoverUrl)" />
+        <div class="card-body">
+          <h6 class="mb-0">@it.Book!.Title</h6>
+          <small class="text-muted">@it.Book!.Author</small>
+        </div>
+        <div class="card-footer bg-white border-0 d-flex gap-2">
+          <form method="post" asp-controller="Cart" asp-action="Add" class="flex-grow-1">
+            <input type="hidden" name="bookId" value="@it.BookId" />
+            <button class="btn btn-outline-primary w-100" type="submit">Add to cart</button>
+          </form>
+          <form method="post" asp-action="Remove">
+            <input type="hidden" name="bookId" value="@it.BookId" />
+            <button class="btn btn-link text-danger">Remove</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  }
+</div>
+```
+
+```html
+@* Bookory/Views/Orders/Index.cshtml (converted from orders.html) *@
+@model IReadOnlyList<Bookory.Models.Order>
+@{ ViewData["Title"] = "My Orders"; }
+<h2 class="mb-3">My Orders</h2>
+@if (!Model.Any()) { <div class="alert alert-info">No orders yet.</div> }
+@foreach (var o in Model) {
+  <div class="card mb-3">
+    <div class="card-body d-flex justify-content-between align-items-center">
+      <div>
+        <div class="fw-semibold">Order #@o.Id</div>
+        <div class="text-muted small">@o.CreatedAt.ToLocalTime().ToString("g") — @o.Status</div>
+      </div>
+      <div class="fw-semibold">₹ @o.Total</div>
+      <a class="btn btn-outline-secondary" asp-action="Details" asp-route-id="@o.Id">View</a>
+    </div>
+  </div>
+}
+```
+
+```html
+@* Bookory/Views/Orders/Details.cshtml (converted from vieworders.html) *@
+@model Bookory.Models.Order
+@{ ViewData["Title"] = "Order Details"; }
+<h2 class="mb-3">Order #@Model.Id</h2>
+<div class="mb-2 text-muted">Placed: @Model.CreatedAt.ToLocalTime().ToString("f")</div>
+<div class="mb-4">Status: <span class="badge bg-secondary">@Model.Status</span></div>
+<table class="table">
+  <thead><tr><th>Book</th><th>Qty</th><th>Price</th></tr></thead>
+  <tbody>
+    @foreach (var it in Model.Items) {
+      <tr>
+        <td>@it.Book?.Title</td><td>@it.Quantity</td><td>₹ @(it.UnitPrice * it.Quantity)</td>
+      </tr>
+    }
+  </tbody>
+  <tfoot><tr><th colspan="2" class="text-end">Total</th><th>₹ @Model.Total</th></tr></tfoot>
+</table>
+```
+
+```html
+@* Bookory/Areas/Admin/Views/Dashboard/Index.cshtml (from admindashboard.html) *@
+@{
+  ViewData["Title"] = "Admin Dashboard";
+}
+<div class="row g-3">
+  <div class="col-md-4"><div class="card"><div class="card-body"><h5>Books</h5><div class="display-6">@ViewBag.BookCount</div></div></div></div>
+  <div class="col-md-4"><div class="card"><div class="card-body"><h5>Orders</h5><div class="display-6">@ViewBag.OrderCount</div></div></div></div>
+  <div class="col-md-4"><div class="card"><div class="card-body"><h5>Users</h5><div class="display-6">@ViewBag.UserCount</div></div></div></div>
+</div>
+<div class="mt-4">
+  <a class="btn btn-primary" asp-area="Admin" asp-controller="Books" asp-action="Index">Manage Books</a>
+  <a class="btn btn-outline-secondary" asp-area="Admin" asp-controller="Customers" asp-action="Index">Customers</a>
+</div>
+```
+
+```html
+@* Bookory/Areas/Admin/Views/Books/Index.cshtml (from managebooks.html) *@
+@model IReadOnlyList<Bookory.Models.Book>
+@{ ViewData["Title"] = "Manage Books"; }
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h2>Books</h2>
+  <a class="btn btn-primary" asp-action="Create">Add Book</a>
+</div>
+<table class="table table-striped align-middle">
+  <thead><tr><th>Title</th><th>Author</th><th>Category</th><th>Price</th><th>Stock</th><th></th></tr></thead>
+  <tbody>
+  @foreach (var b in Model) {
+    <tr>
+      <td>@b.Title</td><td>@b.Author</td><td>@b.Category?.Name</td><td>₹ @b.Price</td><td>@b.Stock</td>
+      <td class="text-end">
+        <a class="btn btn-sm btn-outline-secondary" asp-action="Edit" asp-route-id="@b.Id">Edit</a>
+        <form asp-action="Delete" method="post" class="d-inline" onsubmit="return confirm('Delete this book?')">
+          <input type="hidden" name="id" value="@b.Id" />
+          <button class="btn btn-sm btn-outline-danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+  }
+  </tbody>
+</table>
+```
+
+```html
+@* Bookory/Areas/Admin/Views/Books/Create.cshtml *@
+@model Bookory.Models.Book
+@{ ViewData["Title"] = "Create Book"; var categories = (IReadOnlyList<Bookory.Models.Category>)ViewBag.Categories; }
+<h2 class="mb-3">Create Book</h2>
+<form method="post" class="row g-3">
+  <div class="col-md-6"><label class="form-label">Title</label><input asp-for="Title" class="form-control" /></div>
+  <div class="col-md-6"><label class="form-label">Author</label><input asp-for="Author" class="form-control" /></div>
+  <div class="col-md-4"><label class="form-label">Category</label>
+    <select asp-for="CategoryId" class="form-select">
+      @foreach(var c in categories){<option value="@c.Id">@c.Name</option>}
+    </select>
+  </div>
+  <div class="col-md-4"><label class="form-label">Price</label><input asp-for="Price" class="form-control" type="number" step="0.01" /></div>
+  <div class="col-md-4"><label class="form-label">Stock</label><input asp-for="Stock" class="form-control" type="number" /></div>
+  <div class="col-12"><label class="form-label">Cover URL</label><input asp-for="CoverUrl" class="form-control" /></div>
+  <div class="col-12"><button class="btn btn-primary">Create</button> <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a></div>
+</form>
+```
+
+```html
+@* Bookory/Areas/Admin/Views/Books/Edit.cshtml *@
+@model Bookory.Models.Book
+@{ ViewData["Title"] = "Edit Book"; var categories = (IReadOnlyList<Bookory.Models.Category>)ViewBag.Categories; }
+<h2 class="mb-3">Edit Book</h2>
+<form method="post" class="row g-3">
+  <input type="hidden" asp-for="Id" />
+  <div class="col-md-6"><label class="form-label">Title</label><input asp-for="Title" class="form-control" /></div>
+  <div class="col-md-6"><label class="form-label">Author</label><input asp-for="Author" class="form-control" /></div>
+  <div class="col-md-4"><label class="form-label">Category</label>
+    <select asp-for="CategoryId" class="form-select">
+      @foreach(var c in categories){<option value="@c.Id" selected="@(Model.CategoryId==c.Id)">@c.Name</option>}
+    </select>
+  </div>
+  <div class="col-md-4"><label class="form-label">Price</label><input asp-for="Price" class="form-control" type="number" step="0.01" /></div>
+  <div class="col-md-4"><label class="form-label">Stock</label><input asp-for="Stock" class="form-control" type="number" /></div>
+  <div class="col-12"><label class="form-label">Cover URL</label><input asp-for="CoverUrl" class="form-control" /></div>
+  <div class="col-12"><button class="btn btn-primary">Save</button> <a asp-action="Index" class="btn btn-outline-secondary">Cancel</a></div>
+</form>
+```
+
+```html
+@* Bookory/Areas/Admin/Views/Customers/Index.cshtml (from customers.html) *@
+@model IReadOnlyList<Bookory.Models.ApplicationUser>
+@{ ViewData["Title"] = "Customers"; }
+<h2 class="mb-3">Customers</h2>
+<table class="table table-striped">
+  <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th></th></tr></thead>
+  <tbody>
+  @foreach (var u in Model) {
+    <tr><td>@u.FullName</td><td>@u.Email</td><td>@u.PhoneNumber</td><td></td></tr>
+  }
+  </tbody>
+</table>
+```
+
+```html
+@* Bookory/Views/Shared/_ValidationScriptsPartial.cshtml *@
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-validate/1.19.5/jquery.validate.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-validation-unobtrusive/3.2.12/jquery.validate.unobtrusive.min.js"></script>
+```
+
+```css
+/* Bookory/wwwroot/css/site.css */
+:root{ --primary:#FF6600 }
+.btn-primary{ --bs-btn-bg:var(--primary); --bs-btn-border-color:var(--primary) }
+```
+
+```md
+# How to run
+1) Install .NET 8 SDK.
+2) Create folder `Bookory` and place the files accordingly (use this document as a map).
+3) Copy images from your ZIP to `wwwroot/images/` (ignore `Addaddress.html`).
+4) Update `appsettings.json` connection if needed.
+5) Run: `dotnet build` then `dotnet run`.
+6) Login to Admin with: `admin@bookory.local` / `Admin@12345`. Create customers via Register.
+
+# Notes
+- Views were adapted from your HTML names; Bootstrap 5 CDN is used.
+- Services layer added for Books/Cart/Orders.
+- Roles: Admin & Customer; Admin area has dashboard + books + customers management.
+- Checkout simulates payment; order status set automatically.
