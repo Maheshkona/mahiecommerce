@@ -1,0 +1,52 @@
+@model IEnumerable<BookStoreMVC.Models.Order>
+@{
+    ViewData["Title"] = "Orders";
+    string Badge(string s) => s switch {
+        "PENDING" => "badge-pending",
+        "SHIPPED" => "badge-shipped",
+        "DELIVERED" => "badge-delivered",
+        "CANCELLED" => "badge-cancelled",
+        _ => "text-bg-secondary"
+    };
+}
+
+<h2 class="mb-3">Your Orders</h2>
+
+@if (!Model.Any())
+{
+    <div class="alert alert-info">No orders yet.</div>
+}
+else
+{
+    <div class="card product-card p-2 p-md-3">
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Order</th>
+                        <th class="text-center">Items</th>
+                        <th class="text-end">Total</th>
+                        <th class="text-center">Status</th>
+                        <th class="text-end">Placed</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var o in Model)
+                {
+                    <tr>
+                        <td><strong>#@o.Id</strong></td>
+                        <td class="text-center">@o.Items.Count</td>
+                        <td class="text-end">₹@o.TotalAmount.ToString("0.00")</td>
+                        <td class="text-center"><span class="badge @Badge(o.Status.ToString())">@o.Status</span></td>
+                        <td class="text-end">@o.OrderDate.ToString("yyyy-MM-dd")</td>
+                        <td class="text-end">
+                            <a class="btn btn-outline-primary btn-sm btn-rounded" asp-action="Details" asp-route-id="@o.Id">View</a>
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
