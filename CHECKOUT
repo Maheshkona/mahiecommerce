@@ -1,0 +1,63 @@
+@{
+  ViewData["Title"] = "Checkout";
+}
+<h2 class="mb-3">Checkout</h2>
+
+<div class="checkout-steps">
+  <div class="step current"><span class="num">1</span> Shipping</div>
+  <div class="step"><span class="num">2</span> Payment</div>
+  <div class="step"><span class="num">3</span> Confirm</div>
+</div>
+
+<div class="row g-4">
+  <div class="col-lg-7">
+    <div class="card p-4">
+      <form asp-action="Checkout" method="post">
+        @Html.AntiForgeryToken()
+        <div class="row g-3">
+          <div class="col-12">
+            <label class="form-label">Full Name</label>
+            <input name="ShippingName" class="form-control" required />
+          </div>
+          <div class="col-12">
+            <label class="form-label">Address</label>
+            <input name="ShippingAddress" class="form-control" required />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">City</label>
+            <input name="ShippingCity" class="form-control" required />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">State</label>
+            <input name="ShippingState" class="form-control" required />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">PIN Code</label>
+            <input name="ShippingZip" class="form-control" required pattern="^[1-9][0-9]{5}$" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Phone</label>
+            <input name="Phone" class="form-control" required pattern="^[0-9]{10}$" />
+          </div>
+        </div>
+
+        <div class="d-flex justify-content-end gap-2 mt-4">
+          <a asp-controller="Cart" asp-action="Index" class="btn btn-outline-primary">Back to Cart</a>
+          <button class="btn btn-primary">Proceed to Payment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card p-4 summary-card">
+      <h5 class="mb-3">Order Summary</h5>
+      <div class="line"><span>Items</span><span>@(ViewBag.ItemsCount ?? 0)</span></div>
+      <div class="line"><span>Subtotal</span><span>₹@(ViewBag.Subtotal ?? 0M)</span></div>
+      <div class="line"><span>Shipping</span><span>₹@(ViewBag.Shipping ?? 0M)</span></div>
+      <hr/>
+      <div class="line total"><span>Total</span><span>₹@(ViewBag.Total ?? 0M)</span></div>
+      <small class="text-muted d-block mt-2">Secure checkout • No hidden charges</small>
+    </div>
+  </div>
+</div>
