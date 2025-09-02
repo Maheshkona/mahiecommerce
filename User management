@@ -1,0 +1,151 @@
+1) Model (what data we store)
+
+Core types (typical in your project):
+
+public enum UserRole { CUSTOMER, ADMIN }
+
+public class User
+{
+    [Key] public int Id { get; set; }
+
+    [Required, MaxLength(50)]
+    public string Username { get; set; } = string.Empty;
+
+    [Required, MaxLength(255)]
+    public string PasswordHash { get; set; } = string.Empty;
+
+    [Required]
+    public UserRole Role { get; set; } = UserRole.CUSTOMER;
+
+    [Required, EmailAddress, MaxLength(255)]
+    public string Email { get; set; } = string.Empty;
+
+    public ICollection<CartItem> CartItems { get; set; } = new List<CartItem>();
+    public ICollection<Order> Orders { get; set; } = new List<Order>();
+}
+
+
+Why each piece matters:
+
+Username, Email: identity fields. Usually you add a unique index so duplicates are blocked.
+
+PasswordHash: you store a hash, not the raw password (PBKDF2/BCrypt/Argon2).
+
+Role: drives authorization (who can see admin pages).
+
+Navigation collections let EF Core load a user’s cart and orders.
+
+EF tip (unique constraint) in OnModelCreating:
+
+modelBuilder.Entity<User>()
+    .HasIndex(u => u.Username)
+    .IsUnique();
+modelBuilder.Entity<User>()
+    .HasIndex(u => u.Email)
+    .IsUnique();
+
+2) Service layer (business logic; keeps controllers thin)
+
+Typical IUserService methods and what they do:
+
+RegisterAsync(model)
+
+Validate inputs (unique Username/Email).
+
+Hash password → PasswordHash.
+
+Save user (DbContext.Users.Add) and return result.
+
+ValidateCredentialsAsync(username, password)
+
+Get user by username.
+
+Verify password by hashing the input and comparing to PasswordHash.
+
+Return the user (or null) to the controller.
+
+SignInAsync(HttpContext, user)
+
+Build claims: Name, NameIdentifier, Role.
+
+Create ClaimsIdentity + ClaimsPrincipal.
+
+HttpContext.SignInAsync(...) to issue the auth cookie.
+
+SignOutAsync(HttpContext) → HttpContext.SignOutAsync().
+
+3) Controller (wires HTTP to the service)
+
+AccountController common actions:
+
+GET /Account/Register → returns the form.
+
+POST /Account/Register → calls RegisterAsync; on success, optional auto-sign-in, redirect to Home.
+
+GET /Account/Login → returns the form.
+
+POST /Account/Login → ValidateCredentialsAsync; on success, SignInAsync;
+if Role == ADMIN → redirect to Admin dashboard; else → Home.
+
+POST /Account/Logout → SignOutAsync → Home.
+
+Use [ValidateAntiForgeryToken] on POSTs.
+
+4) Views (Razor + Bootstrap + a little jQuery)
+
+Register.cshtml / Login.cshtml:
+
+Bootstrap form classes: form-control, is-invalid, btn, row/col, etc.
+
+asp-validation-summary="ModelOnly" to show server-side errors.
+
+jQuery used for tiny UX checks (e.g., show/hide password, simple format checks).
+
+AccessDenied.cshtml: friendly error page when role is wrong.
+
+5) Auth: Cookies + Claims (not JWT)
+
+You removed the package reference—fine in .NET 8; cookie auth lives in the shared framework.
+
+Keep in Program.cs:
+
+builder.Services.AddAuthentication("Cookies")
+    .AddCookie("Cookies", options =>
+    {
+        options.LoginPath = "/Account/Login";
+        options.AccessDeniedPath = "/Account/AccessDenied";
+    });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("AdminOnly", p => p.RequireRole("ADMIN"));
+});
+
+
+After SignInAsync, the browser stores an encrypted cookie containing your claims.
+
+Protect admin UI with [Authorize(Roles="ADMIN")] (controllers and/or actions).
+
+Claims vs JWT (quick memory):
+
+Cookie + claims: server issues/validates an encrypted cookie; great for MVC apps.
+
+JWT: self-contained token (usually for APIs/SPAs); server validates signature, not stored session.
+
+6) Database (SQL Server, as you prefer)
+
+Switch provider (you already planned this):
+
+builder.Services.AddDbContext<ApplicationDbContext>(opts =>
+    opts.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+
+Users table columns: Id (PK), Username (unique), Email (unique), PasswordHash, Role (int/string), ....
+
+7) End-to-end flow to trace (practice)
+
+Register → Auto Sign-In (optional) → redirect.
+
+Login → Claims cookie → if ADMIN → Admin dashboard, else Home.
+
+Authorize: try opening an admin route as CUSTOMER and see AccessDenied.
