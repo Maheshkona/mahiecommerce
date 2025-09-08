@@ -1,0 +1,34 @@
+@if (!User.IsInRole("ADMIN"))
+{
+    <div class="card p-4 mt-3">
+        <h5 class="mb-3">Manage Order</h5>
+        @if (Model.Status == OrderStatus.DELIVERED)
+        {
+            <form asp-action="RequestReturn" method="post" class="d-grid gap-2">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Id" />
+                <button type="submit" class="btn btn-outline-primary">Request Return</button>
+            </form>
+        }
+        else if (Model.Status == OrderStatus.PENDING || Model.Status == OrderStatus.SHIPPED)
+        {
+            <form asp-action="Cancel" method="post" class="d-grid gap-2">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@Model.Id" />
+                <button type="submit" class="btn btn-outline-danger">Cancel Order</button>
+            </form>
+        }
+        else if (Model.Status == OrderStatus.RETURN_REQUESTED)
+        {
+            <span class="text-warning">Return requested. We’ll process your return soon.</span>
+        }
+        else if (Model.Status == OrderStatus.RETURN_SHIPPED)
+        {
+            <span class="text-info">Return shipment is on the way.</span>
+        }
+        else if (Model.Status == OrderStatus.RETURN_DELIVERED)
+        {
+            <span class="text-success">Return completed and delivered.</span>
+        }
+    </div>
+}
