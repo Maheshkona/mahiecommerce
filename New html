@@ -1,0 +1,101 @@
+@* Hidden form that actually does the POST on the second click *@
+<form id="returnForm" asp-action="RequestReturn" method="post" class="d-none">
+  @Html.AntiForgeryToken()
+  <input type="hidden" name="id" value="@Model.Id" />
+</form>
+
+<button type="button" id="btnReturn" class="btn btn-outline-primary w-100">
+  Return
+</button>
+
+<div id="returnHint" class="small text-success mt-2 d-none">
+  Policy accepted. Click <strong>Return</strong> again to submit your request.
+</div>
+
+
+
+<!-- Return & Replacement Policy (Damaged books only) -->
+<div class="modal fade" id="returnPolicyModal" tabindex="-1" aria-labelledby="returnPolicyLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="returnPolicyLabel">Return & Replacement Policy</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">This return is available <strong>only for damaged books</strong> and must be requested <strong>within 1–2 days</strong> of delivery.</p>
+        <ul class="mb-3">
+          <li>Provide photos of the damage if requested.</li>
+          <li>Include the invoice/packing slip in the package.</li>
+          <li>Pickup / return instructions will be shared after approval.</li>
+        </ul>
+
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="policyAckChk">
+          <label class="form-check-label" for="policyAckChk">
+            I confirm I’m returning due to damage and I’m within 1–2 days of delivery.
+          </label>
+        </div>
+        <div id="policyError" class="text-danger small mt-2 d-none">Please tick the confirmation to continue.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" id="confirmReturnPolicy" class="btn btn-primary">I Agree</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+
+@section Scripts{
+<script>
+  $(function () {
+    var orderKey = 'bookory:returnAccepted:' + '@Model.Id';
+
+    function hasAccepted() {
+      try { return localStorage.getItem(orderKey) === '1'; } catch(e) { return false; }
+    }
+    function setAccepted() {
+      try { localStorage.setItem(orderKey, '1'); } catch(e) {}
+    }
+
+    // First click: if not accepted, show policy. If already accepted, submit.
+    $('#btnReturn').on('click', function () {
+      if (hasAccepted()) {
+        $('#returnForm').trigger('submit');
+      } else {
+        $('#policyError').addClass('d-none');
+        $('#policyAckChk').prop('checked', false);
+        $('#returnPolicyModal').modal('show');
+      }
+    });
+
+    // In modal: must tick checkbox, then we store acceptance and hint the user to click Return again
+    $('#confirmReturnPolicy').on('click', function () {
+      if (!$('#policyAckChk').is(':checked')) {
+        $('#policyError').removeClass('d-none');
+        return;
+      }
+      setAccepted();
+      $('#returnPolicyModal').modal('hide');
+      $('#returnHint').removeClass('d-none'); // show hint: click Return again
+    });
+  });
+</script>
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
