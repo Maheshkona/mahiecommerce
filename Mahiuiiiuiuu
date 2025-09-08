@@ -1,0 +1,21 @@
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> RequestReturn(int id)
+{
+    int userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId);
+    if (order == null) return NotFound();
+
+    if (order.Status != OrderStatus.DELIVERED)
+    {
+        TempData["Error"] = "You can request a return only after delivery.";
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    order.Status = OrderStatus.RETURN_REQUESTED;
+    _context.Update(order);
+    await _context.SaveChangesAsync();
+
+    TempData["Success"] = "Return requested.";
+    return RedirectToAction(nameof(Details), new { id });
+}
