@@ -1,0 +1,50 @@
+/// <summary>
+/// Customer-initiated request to return a delivered order.
+/// Only orders with status DELIVERED can be returned.
+/// </summary>
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> RequestReturn(int id)
+{
+    int userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId);
+    if (order == null)
+        return NotFound();
+    if (order.Status != OrderStatus.DELIVERED)
+        return RedirectToAction(nameof(Details), new { id });
+
+    order.Status = OrderStatus.RETURN_REQUESTED;
+    _context.Update(order);
+    await _context.SaveChangesAsync();
+
+    return RedirectToAction(nameof(Details), new { id });
+}
+
+/// <summary>
+/// Customer-initiated cancellation of an order.  
+/// Cancels only if the order isn’t already delivered, cancelled or in the return process.
+/// </summary>
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> Cancel(int id)
+{
+    int userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    var order = await _context.Orders.FirstOrDefaultAsync(o => o.Id == id && o.UserId == userId);
+    if (order == null)
+        return NotFound();
+
+    if (order.Status == OrderStatus.DELIVERED ||
+        order.Status == OrderStatus.CANCELLED ||
+        order.Status == OrderStatus.RETURN_REQUESTED ||
+        order.Status == OrderStatus.RETURN_SHIPPED ||
+        order.Status == OrderStatus.RETURN_DELIVERED)
+    {
+        return RedirectToAction(nameof(Details), new { id });
+    }
+
+    order.Status = OrderStatus.CANCELLED;
+    _context.Update(order);
+    await _context.SaveChangesAsync();
+
+    return RedirectToAction(nameof(Details), new { id });
+}
