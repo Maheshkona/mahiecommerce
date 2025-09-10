@@ -1,0 +1,64 @@
+[HttpPost]
+[ValidateAntiForgeryToken]
+[Authorize]
+public async Task<IActionResult> Payment(int OrderId, decimal Amount, string Method, string? UpiId)
+{
+    var userId = int.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    var order = await _db.Orders
+        .Include(o => o.Items).ThenInclude(oi => oi.Book)
+        .FirstOrDefaultAsync(o => o.Id == OrderId && o.UserId == userId);
+
+    if (order == null)
+        return RedirectToAction("Index", "Books");
+
+    // --- ADJUST STOCK ONCE ---
+    if (!order.StockAdjusted)
+    {
+        // validate availability first
+        foreach (var it in order.Items)
+        {
+            if (it.Book == null)
+            {
+                TempData["Error"] = "One of the ordered books no longer exists.";
+                return RedirectToAction("Details", "Orders", new { id = order.Id });
+            }
+            if (it.Book.StockQuantity < it.Quantity)
+            {
+                TempData["Error"] = $"Insufficient stock for '{it.Book.Title}'. Available: {it.Book.StockQuantity}, requested: {it.Quantity}.";
+                return RedirectToAction("Details", "Orders", new { id = order.Id });
+            }
+        }
+
+        // decrement
+        foreach (var it in order.Items)
+        {
+            it.Book.StockQuantity -= it.Quantity;
+            _db.Books.Update(it.Book);
+        }
+
+        order.StockAdjusted = true;
+        _db.Orders.Update(order);
+
+        await _db.SaveChangesAsync();  // <- writes updated StockQuantity to DB (SSMS will show it)
+    }
+    // -------------------------
+
+    // record payment (keep your existing fields)
+    var payment = new Payment
+    {
+        OrderId = order.Id,
+        Amount = Amount,
+        PaymentMethod = string.IsNullOrWhiteSpace(Method) ? "UPI" : Method,
+        PaymentStatus = PaymentStatus.COMPLETED,
+        PaymentDate = DateTime.UtcNow
+    };
+    _db.Payments.Add(payment);
+
+    // update order status if needed (keep your existing rule)
+    if (order.Status == OrderStatus.PENDING)
+        order.Status = OrderStatus.SHIPPED;
+
+    await _db.SaveChangesAsync();
+    return RedirectToAction("Success", "Cart", new { id = order.Id });
+}
